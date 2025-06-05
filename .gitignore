@@ -12,7 +12,25 @@ npm-debug.log*
 Thumbs.db
 
 # VSCode設定（個人環境だけにしたいなら）
-.vscode/
+.vscode/settings.json
+.vscode/launch.json
+# .vscode/extensions.json は共有したい場合がある
 
 # その他ログファイル
 *.log
+
+# 環境変数ファイル
+.env
+.env.local
+.env.development
+.env.production
+
+# 一時ファイル
+*.tmp
+*.temp
+.cache/
+
+# IDEファイル
+.idea/
+*.swp
+*.swo
