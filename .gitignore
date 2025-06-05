@@ -1,0 +1,18 @@
+# Node.js関連
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# Claude CLI設定
+.claude/
+.claude/config.json
+
+# OS関連ファイル
+.DS_Store
+Thumbs.db
+
+# VSCode設定（個人環境だけにしたいなら）
+.vscode/
+
+# その他ログファイル
+*.log
