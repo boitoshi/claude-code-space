@@ -4,7 +4,22 @@ GitHub Codespaces上でClaude Codeを使用するための開発環境テンプ�
 
 ## 🚀 使い方
 
-### 1. Codespacesで開く
+### 🎯 既存プロジェクトに一発導入（おすすめ！）
+
+任意のプロジェクトでターミナルに以下をコピペするだけ：
+
+```bash
+curl -s https://raw.githubusercontent.com/boitoshi/claude-code-space/main/setup.sh | bash
+```
+
+**これだけで：**
+- プロジェクトタイプを自動検出（Node.js/Python/Rust対応）
+- 最適な`.devcontainer/devcontainer.json`を生成
+- `CLAUDE.md`をダウンロード
+- `.gitignore`を更新
+- CodespacesですぐにClaude Codeが使用可能に！
+
+### 1. テンプレートとして使う場合
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/boitoshi/claude-code-space)
 
@@ -59,7 +74,43 @@ claude --help
 - **Claude Code**: 最新版（自動インストール）
 - **VS Code Extensions**: TypeScript、Prettier、JSON
 
-## 💡 よくある使い方
+## 💡 一発導入の使用例
+
+### 🎯 実際の使い方
+
+```bash
+# 既存のReactプロジェクトで
+cd my-react-app
+
+# スニペットをコピペ実行
+curl -s https://raw.githubusercontent.com/boitoshi/claude-code-space/main/setup.sh | bash
+
+# 出力例：
+🚀 Claude Code環境セットアップ開始...
+📦 Node.js プロジェクトを検出
+✅ .devcontainer/devcontainer.json を作成
+✅ CLAUDE.md を作成
+✅ .gitignore を更新
+🎉 セットアップ完了！
+
+# Codespacesを再起動
+# → Ctrl+Shift+P → "Codespaces: Rebuild Container"
+
+# Claude Codeにログイン
+claude auth login
+
+# 開発開始！
+claude
+```
+
+### 📱 対応プロジェクトタイプ
+
+- **Node.js**: `package.json` 検出時
+- **Python**: `requirements.txt` または `pyproject.toml` 検出時  
+- **Rust**: `Cargo.toml` 検出時
+- **汎用**: その他すべてのプロジェクト
+
+## 💡 Claude Codeの使い方
 
 ### コード生成
 
