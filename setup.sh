@@ -14,6 +14,40 @@ NC='\033[0m' # No Color
 SETUP_DIR="claude-code-space"
 CONFIG_FILE=".claude-config.json"
 
+# セットアップモード選択
+choose_setup_mode() {
+    echo -e "${BLUE}⚡ セットアップモードを選択してください:${NC}"
+    echo "1) 軽量版 (Claude Code + プロジェクト専用CLAUDE.mdのみ) [推奨]"
+    echo "2) フル版 (devcontainer + Claude Code + CLAUDE.md)"
+    echo "3) キャンセル"
+    echo ""
+    
+    while true; do
+        echo -n "選択 [1-3]: "
+        read -r choice
+        case $choice in
+            1)
+                SETUP_MODE="light"
+                echo -e "${GREEN}✅ 軽量版を選択しました${NC}"
+                break
+                ;;
+            2)
+                SETUP_MODE="full"
+                echo -e "${GREEN}✅ フル版を選択しました${NC}"
+                break
+                ;;
+            3)
+                echo -e "${YELLOW}⏭️  セットアップをキャンセルしました${NC}"
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}❌ 1〜3を選択してください${NC}"
+                ;;
+        esac
+    done
+    echo ""
+}
+
 # プロジェクトタイプと技術スタックを詳細検出
 detect_project_details() {
     echo "🔍 プロジェクトを解析中..."
@@ -66,6 +100,9 @@ detect_project_details() {
     elif [ -f "Cargo.toml" ]; then
         project_type="rust"  
         language="rust"
+    elif [ -f "go.mod" ]; then
+        project_type="go"
+        language="go"
     fi
     
     # 検出結果を表示
@@ -198,6 +235,12 @@ setup_devcontainer() {
             extensions="\"rust-lang.rust-analyzer\",\"tamasfe.even-better-toml\""
             ports="[8080]"
             ;;
+        "go")
+            image="mcr.microsoft.com/devcontainers/go:1.21"
+            extensions="\"golang.go\",\"ms-vscode.vscode-json\""
+            ports="[8080]"
+            post_command="go mod download && npm install -g @anthropic-ai/claude-code"
+            ;;
     esac
     
     # 追加拡張機能を結合
@@ -229,7 +272,239 @@ EOF
     echo -e "${GREEN}✅ $container_path/devcontainer.json を作成${NC}"
 }
 
-# CLAUDE.md を作成
+# Claude Codeの自動インストール
+install_claude_code() {
+    echo "🔧 Claude Codeをインストール中..."
+    
+    if command -v claude > /dev/null 2>&1; then
+        echo -e "${GREEN}✅ Claude Code は既にインストール済みです${NC}"
+        return
+    fi
+    
+    if command -v npm > /dev/null 2>&1; then
+        npm install -g @anthropic-ai/claude-code
+        echo -e "${GREEN}✅ Claude Code をインストールしました${NC}"
+    else
+        echo -e "${RED}❌ npmが見つかりません。Node.jsをインストールしてください${NC}"
+        exit 1
+    fi
+    echo ""
+}
+
+# npm scriptsを読み取り
+get_npm_scripts() {
+    if [ ! -f "package.json" ]; then
+        return
+    fi
+    
+    DEV_SCRIPT=""
+    BUILD_SCRIPT=""
+    TEST_SCRIPT=""
+    LINT_SCRIPT=""
+    
+    if grep -q '"dev"' package.json; then DEV_SCRIPT="npm run dev"; fi
+    if grep -q '"start"' package.json && [ -z "$DEV_SCRIPT" ]; then DEV_SCRIPT="npm start"; fi
+    if grep -q '"build"' package.json; then BUILD_SCRIPT="npm run build"; fi
+    if grep -q '"test"' package.json; then TEST_SCRIPT="npm test"; fi
+    if grep -q '"lint"' package.json; then LINT_SCRIPT="npm run lint"; fi
+}
+
+# プロジェクト専用CLAUDE.mdを動的生成
+generate_dynamic_claude_md() {
+    local claude_path="${INSTALL_PATH:+$INSTALL_PATH/}CLAUDE.md"
+    
+    if [ -n "$INSTALL_PATH" ]; then
+        mkdir -p "$INSTALL_PATH"
+    fi
+    
+    get_npm_scripts
+    
+    cat > "$claude_path" << EOF
+# Claude Code プロジェクト設定
+
+このファイルはClaude Codeが参照するプロジェクト固有の設定と指示を含んでいます。
+
+## Claude Codeのパーソナリティ設定
+
+あなたは親しみやすく、モチベーションを上げてくれる開発パートナーです。以下の特徴で振る舞ってください：
+
+### 口調・態度
+- 丁寧だが親しみやすい口調（敬語は使わなくてもいいよ）
+- 開発者のモチベーションを上げる励ましの言葉を適度に使用
+- 成功時は一緒に喜び、困っているときは寄り添う姿勢
+- 絵文字を適度に使用してフレンドリーな雰囲気を演出（😊 🚀 💡 ✨ 🎉 など）
+
+### コミュニケーションスタイル
+- 技術的な説明は分かりやすく、必要に応じて例えも交える
+- 間違いを指摘する際も建設的で前向きな表現を使用
+- 進捗や成果を認めて褒める
+
+## プロジェクト概要
+
+**プロジェクトタイプ**: $PROJECT_TYPE
+**言語**: $LANGUAGE$([ -n "$FRAMEWORK" ] && echo "
+**フレームワーク**: $FRAMEWORK")$([ -n "$STYLING" ] && echo "
+**スタイリング**: $STYLING")$([ -n "$TESTING" ] && echo "
+**テスト**: $TESTING")
+
+## 開発環境
+
+EOF
+
+    # プロジェクトタイプ別の設定を追加
+    case $PROJECT_TYPE in
+        "nodejs")
+            cat >> "$claude_path" << EOF
+### Node.js環境
+- パッケージマネージャー: npm
+- 設定ファイル: package.json$([ -f "tsconfig.json" ] && echo ", tsconfig.json")$([ -f ".eslintrc.js" -o -f ".eslintrc.json" ] && echo ", .eslintrc")
+
+### 便利なコマンド
+EOF
+            [ -n "$DEV_SCRIPT" ] && echo "- 開発サーバー: \`$DEV_SCRIPT\`" >> "$claude_path"
+            [ -n "$BUILD_SCRIPT" ] && echo "- ビルド: \`$BUILD_SCRIPT\`" >> "$claude_path"
+            [ -n "$TEST_SCRIPT" ] && echo "- テスト: \`$TEST_SCRIPT\`" >> "$claude_path"
+            [ -n "$LINT_SCRIPT" ] && echo "- リント: \`$LINT_SCRIPT\`" >> "$claude_path"
+            ;;
+        "python")
+            cat >> "$claude_path" << EOF
+### Python環境
+- 依存関係: requirements.txt$([ -f "pyproject.toml" ] && echo " / pyproject.toml")
+- 仮想環境: venv推奨
+
+### 便利なコマンド
+- 仮想環境作成: \`python -m venv venv\`
+- 依存関係インストール: \`pip install -r requirements.txt\`
+EOF
+            ;;
+        "rust")
+            cat >> "$claude_path" << EOF
+### Rust環境
+- パッケージマネージャー: cargo
+- 設定ファイル: Cargo.toml
+
+### 便利なコマンド
+- ビルド: \`cargo build\`
+- 実行: \`cargo run\`  
+- テスト: \`cargo test\`
+EOF
+            ;;
+        "go")
+            cat >> "$claude_path" << EOF
+### Go環境
+- パッケージマネージャー: go mod
+- 設定ファイル: go.mod
+
+### 便利なコマンド
+- ビルド: \`go build\`
+- 実行: \`go run .\`
+- テスト: \`go test ./...\`
+- 依存関係整理: \`go mod tidy\`
+EOF
+            ;;
+    esac
+
+    # コーディング規約セクション
+    cat >> "$claude_path" << EOF
+
+## コーディング規約
+
+### 基本方針
+- 読みやすく保守しやすいコードを心がける
+- プロジェクトの既存パターンに合わせる
+- 適切なコメントとドキュメント作成
+
+EOF
+
+    # 言語別のコーディング規約
+    case $LANGUAGE in
+        "javascript"|"typescript")
+            cat >> "$claude_path" << EOF
+### JavaScript/TypeScript
+- インデント: 2スペース
+- セミコロン: 使用する
+- 引用符: シングルクォート推奨
+- 命名規則: camelCase
+EOF
+            ;;
+        "python")
+            cat >> "$claude_path" << EOF
+### Python
+- インデント: 4スペース
+- 命名規則: snake_case
+- PEP 8に準拠
+- 型ヒント推奨
+EOF
+            ;;
+        "rust")
+            cat >> "$claude_path" << EOF
+### Rust
+- インデント: 4スペース
+- 命名規則: snake_case
+- rustfmtを使用
+- クリッピーを活用
+EOF
+            ;;
+        "go")
+            cat >> "$claude_path" << EOF
+### Go
+- インデント: タブ
+- 命名規則: camelCase（関数）、PascalCase（公開型）
+- gofmtを使用
+- golintを活用
+EOF
+            ;;
+    esac
+
+    cat >> "$claude_path" << EOF
+
+## 推奨ワークフロー
+
+1. **新機能開発時**
+   - フィーチャーブランチを作成
+   - Claude Codeで設計・実装を相談
+   - テストケースも含めて開発
+
+2. **バグ修正時**
+   - 問題の再現手順を整理
+   - Claude Codeで原因分析を依頼
+   - 修正後は回帰テストを実行
+
+3. **リファクタリング時**
+   - 既存コードの問題点を特定
+   - Claude Codeで改善案を検討
+   - 段階的に安全にリファクタリング
+
+## セキュリティとベストプラクティス
+
+- 機密情報やAPIキーは環境変数を使用
+- 依存関係は定期的に更新
+- セキュリティ脆弱性をチェック
+- コミット前に$([ -n "$LINT_SCRIPT" ] && echo "lintと")テストを実行
+
+## よくあるタスク
+
+### コード生成
+「新しい○○機能を実装してください」
+「○○のためのユーティリティ関数を作成してください」
+
+### コードレビュー
+「このコードの問題点や改善点を教えてください」
+「パフォーマンスを向上させる方法はありますか？」
+
+### デバッグ
+「このエラーの原因と解決方法を教えてください」
+「なぜこの処理が期待通りに動作しないのでしょうか？」
+
+---
+
+🎉 このプロジェクトでClaude Codeを活用して、効率的な開発を進めましょう！
+EOF
+
+    echo -e "${GREEN}✅ プロジェクト専用 $claude_path を生成${NC}"
+}
+
+# CLAUDE.md を作成（従来版）
 setup_claude_md() {
     local claude_path="${INSTALL_PATH:+$INSTALL_PATH/}CLAUDE.md"
     
@@ -330,30 +605,85 @@ show_completion() {
     echo -e "${GREEN}✨ 楽しい開発ライフを〜！${NC}"
 }
 
+# 軽量版セットアップ
+run_light_setup() {
+    echo -e "${YELLOW}⚡ 軽量版セットアップを開始${NC}"
+    echo ""
+    
+    # Claude Codeインストール
+    install_claude_code
+    
+    # プロジェクト解析
+    detect_project_details
+    
+    # プロジェクト専用CLAUDE.md生成
+    generate_dynamic_claude_md
+    
+    # .gitignore更新（オプション）
+    update_gitignore
+    
+    # 軽量版完了メッセージ
+    echo ""
+    echo -e "${GREEN}🎉 軽量版セットアップ完了！${NC}"
+    echo ""
+    echo -e "${BLUE}📁 作成されたファイル:${NC}"
+    echo "   📄 CLAUDE.md (プロジェクト専用設定)"
+    echo ""
+    echo -e "${YELLOW}📋 次のステップ:${NC}"
+    echo "1. Claude Codeにログイン"
+    echo "   → claude auth login"
+    echo "2. 開発開始！"
+    echo "   → claude"
+    echo ""
+    echo -e "${GREEN}✨ 軽量だから$([ "$PROJECT_TYPE" != "unknown" ] && echo "$PROJECT_TYPE")開発がサクサク進むよ〜！${NC}"
+}
+
+# フル版セットアップ
+run_full_setup() {
+    echo -e "${YELLOW}🔧 フル版セットアップを開始${NC}"
+    echo ""
+    
+    # Claude Codeインストール
+    install_claude_code
+    
+    # プロジェクト解析
+    detect_project_details
+    
+    # 設定場所選択
+    choose_setup_location
+    
+    # 追加スタック選択（Node.jsプロジェクトのみ）
+    choose_additional_stack
+    
+    # ファイル作成
+    setup_devcontainer
+    generate_dynamic_claude_md
+    save_config
+    
+    # .gitignore更新（オプション）
+    update_gitignore
+    
+    # フル版完了メッセージ
+    show_completion
+}
+
 # メイン実行
 main() {
     echo -e "${YELLOW}🎯 現在のディレクトリ: $(pwd)${NC}"
     echo ""
     
-    # 1. プロジェクト解析
-    detect_project_details
+    # セットアップモード選択
+    choose_setup_mode
     
-    # 2. 設定場所選択
-    choose_setup_location
-    
-    # 3. 追加スタック選択（Node.jsプロジェクトのみ）
-    choose_additional_stack
-    
-    # 4. ファイル作成
-    setup_devcontainer
-    setup_claude_md
-    save_config
-    
-    # 5. .gitignore更新（オプション）
-    update_gitignore
-    
-    # 6. 完了メッセージ
-    show_completion
+    # 選択されたモードで実行
+    case $SETUP_MODE in
+        "light")
+            run_light_setup
+            ;;
+        "full")
+            run_full_setup
+            ;;
+    esac
 }
 
 main
